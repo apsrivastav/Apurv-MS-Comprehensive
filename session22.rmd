@@ -1,0 +1,315 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(knitr)
+library(kableExtra)
+library(IRdisplay)
+#library(ggplot2)
+```
+
+
+```{r cars}
+ID=22;
+#dat.path='./Data/NMA/' # Replace with your wd
+dat.path='C:/Users/ssrivas/Desktop/Apurv/UC Davis/MS Degree/MS comprehensive/NMA' # Replace with your wd
+#dat = readRDS(paste(dat.path,"session",ID,".rds",sep=''))
+dat = readRDS('session22.rds')
+names(dat)
+
+# Summarize the active trials
+
+scenario.type=c('L (1, ip)','R (-1, ct)','N (0)','B')
+contrast_LmR = dat$contrast_left-dat$contrast_right;
+scenario = numeric(length(contrast_LmR))
+for(i in 1:length(scenario)){
+  if( dat$contrast_left[i]==0 &  dat$contrast_right[i]==0){
+    scenario[i]='N (0)'
+  }else if (contrast_LmR[i] >0){
+    scenario[i]='L (1, ip)'
+  }else if (contrast_LmR[i] < 0){
+    scenario[i]='R (-1, ct)'
+  }else{
+    scenario[i]='B'
+  }
+  
+}
+dat$scenario=scenario;
+
+
+sum.tab<-matrix(0,nrow=length(scenario.type),ncol=7)
+for(i in 1:length(scenario.type) ){
+  ids = which(dat$scenario==scenario.type[i])
+  
+  n.tmp=length(ids);
+  fb=dat$feedback_type[ids]
+  rsp=dat$response[ids]
+  cts=dat$contrast_left[ids]-dat$contrast_right[ids]
+  if(i==4){
+    # success: not 0
+    success= (rsp!=0);
+    
+  }else if (i==3){
+    # success:  0
+    success= (rsp==0);
+  }else{
+    # success: same sign
+    success = (rsp*cts)>0
+  }
+  
+  tmp<-c(sum(success==FALSE),
+         sum(success==TRUE & fb==1),
+         sum(success==TRUE & fb==-1),
+         n.tmp)
+  sum.tab[i,]<-c(tmp,tmp[1:3]/tmp[4])
+}
+
+
+rownames(sum.tab)<-scenario.type
+colnames(sum.tab)<-c('Failure', 'Success', 'Success w/o rewards', 'Total','Failure (prob)', 'Success (prob)', 'Success w/o rewards  (prob)' )
+
+round(sum.tab,digits=2) %>%
+  kable("html",caption=paste("Summary of stimuli scenarios and response across", length(dat$feedback_type ) ,"trials for Session", ID, "Mouse", 
+                             dat$mouse_name, "Date", dat$date_exp )) # %>%
+  #as.character() %>%
+  #display_html()
+```
+
+
+```{r}
+class(dat)
+str(dat)
+table(scenario)
+table(scenario.type)
+sum.tab
+#table(brain_region)
+
+#dim(dat)
+#head(dat)
+```
+
+
+```{r}
+spks<-dat$spks
+class(spks)
+
+data1<-data.frame(spks[, ,1:250])
+brain_region<-dat$brain_region
+brain_data<-cbind(brain_region,data1)
+#data1$brain_data<-rep(dat$brain_region,250)
+
+dim(data1)
+dim(brain_data)
+
+#head(brain_data)
+```
+
+```{r}
+#str(brain_data)
+table(brain_data$brain_region)
+```
+
+
+```{r}
+ndata2<-t(brain_data[,-1])
+dim(ndata2)
+```
+
+
+```{r}
+#head(ndata2)
+time.bin<-rep(1:250, each=444)
+trial.no<-rep(1:444, each=250)
+contrast_right<-dat$contrast_right
+contrast_left<-dat$contrast_left
+stimulus<-contrast_left-contrast_right
+stimulus.type<-rep(stimulus,250)
+
+ndata3<-data.frame(cbind(trial.no,time.bin, stimulus.type, ndata2))
+
+#names(ndata3)<-c("trial.no", "time.bin", "stimulus.type", c("V1":"V646"))
+dim(ndata3)
+str(ndata3)
+#head(ndata3)
+#tail(ndata3)
+```
+
+```{r}
+bin_size<-rep(dat$bin_size,250)
+feedback_type<-rep(dat$feedback_type,250)
+stim_onset<-rep(dat$stim_onset,250)
+reaction_time<- rep(dat$reaction_time[,1], 250)
+reaction_type<- rep(dat$reaction_time[,2], 250)
+#names(reaction_time)<-c("reaction_time","reaction_type")
+response<-rep(dat$response,250)
+scenario<-rep(dat$scenario, 250)
+
+neuro_data<-data.frame(cbind(bin_size, feedback_type,stim_onset,response,scenario,reaction_time,reaction_type, ndata3))
+dim(neuro_data)
+str(neuro_data)
+names(neuro_data[,1:15])
+```
+
+
+```{r}
+#neuro_data$spks<-as.integer(data$spks)
+neuro_data$bin_size<-as.numeric(neuro_data$bin_size)
+neuro_data$feedback_type<-as.factor(neuro_data$feedback_type)
+neuro_data$stim_onset<-as.numeric(neuro_data$stim_onset)
+#neuro_data$contrast_right<-as.numeric(data$neuro_contrast_right)
+#neuro_data$contrast_left<-as.numeric(neuro_data$contrast_left)
+neuro_data$stimulus.type<-as.factor(neuro_data$stimulus.type)
+#neuro_data$brain_region<-as.factor(data$brain_region)
+neuro_data$response<-as.numeric(neuro_data$response)
+neuro_data$reaction_time<-as.numeric(neuro_data$reaction_time)
+neuro_data$reaction_type<-as.factor(neuro_data$reaction_type)
+neuro_data$scenario<-as.factor(neuro_data$scenario)
+
+neuro_data$trial.no<-as.factor(neuro_data$trial.no)
+neuro_data$time.bin<-as.factor(neuro_data$time.bin)
+
+#data$neural.activity<-
+attach(neuro_data)
+class(neuro_data)
+str(neuro_data)
+head(neuro_data)
+```
+
+
+```{r}
+#library(xlsx)
+#write.xlsx(neuro_data, file="neuro_data")
+## , sheetName = "Sheet1",   col.names = TRUE, row.names = TRUE, append = FALSE)
+```
+
+
+```{r}
+#library(reshape2)
+
+#dim(brain_data)
+#molted=melt(brain_data,id.vars=c("id", "brain_region"))
+#head(molted)
+#dim(molted)
+```
+
+
+```{r}
+
+spks<-dat$spks
+class(spks)
+dim(spks)
+neural.no<-apply(spks,c(2), sum)
+row.no<-apply(spks,c(1), sum)
+cell.no<-apply(spks,c(1,2), sum)
+neural.no
+row.no
+#cell.no
+#spks<-data.frame(dat$spks)
+#dim(spks)
+
+```
+
+```{r}
+#time.mat1<-apply(spks[,,1],c(2),sum)
+#time.mat1
+#time.mat2<-apply(spks[,,2],c(2),sum)
+#time.mat2
+#time.mat<-cbind(time.mat1,time.mat2)
+#time.mat
+```
+
+
+
+
+
+
+
+```{r}
+#for(i in 1:250){
+#time.mat[[i]]<-apply(spks[,,i],c(2),sum)
+#time.mat[i]<-cbind(time.mat0,time.mat[i])
+#}
+```
+
+
+```{r}
+#data<-cbind(spks,bin_size,feedback_type,stim_onset,contrast_right,contrast_left,brain_region,reaction_time,response,stimulus,scenario)
+
+#data[,spks]
+```
+
+
+```{r}
+#data<-as.data.frame(data)
+#head(data)
+
+#names(data)<-c("spks","bin_size","feedback_type","stim_onset","contrast_right","contrast_left","brain_region","reaction_time","reaction_type","response","stimulus","scenario")
+
+#head(data)
+```
+
+```{r}
+names(neuro_data)
+```
+
+
+```{r}
+
+#"bin_size"      "feedback_type" "stim_onset"    "response"      "scenario"      "reaction_time" "reaction_type" "trial.no"      "time.bin"      "stimulus.type"
+#summary(neuro_data)
+table(trial.no)
+table(time.bin)
+table(brain_region)
+table(scenario)
+table(feedback_type)
+table(reaction_type)
+table(stim_onset)
+table(reaction_time)
+
+
+table(reaction_time,time.bin)
+
+#barplot(brain_region)
+#plot(brain_region,stimulus)
+#table(brain_region, stimulus)
+```
+
+
+```{r}
+hist(spks)
+hist(stimulus)
+```
+
+```{r}
+vector1 =  c (5, 10, 15,20)
+vector2 =  c (25, 30, 35, 40, 45, 50,55,60)
+```
+
+
+```{r}
+final = array(c(vector1, vector2),dim =c(4,4,3))
+#final = array(c(vector1, vector2))
+print (final)
+
+dim(final)
+```
+
+
+```{r}
+array1 =  c (9 , 18 )
+array2 = c (27,36)
+r.names = c ("column1","column2","column3")
+c.names = c ("row1","row2")
+m.names = c ("Arr1", "Arr2")
+
+final = array (c (array1,array2), dim=c (2,3,2), dimnames=list (c.names, r.names, m.names))
+print(final)
+```
+

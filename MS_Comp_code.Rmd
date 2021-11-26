@@ -1,0 +1,1162 @@
+---
+title: "Final Project: Neural Code"
+author: "Apurv Srivastav"
+date: "11/11/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message= FALSE, warning = FALSE)
+```
+
+
+```{r}
+library(kableExtra)
+library(IRdisplay)
+library(dplyr)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(ggplot2)
+library(nlme)
+library(geepack)
+library(gridExtra)
+```
+
+##### $\bf \text{ Data downloaded:}$
+
+```{r cars}
+ID=22;
+#dat.path='./Data/NMA/' # Replace with your wd
+dat.path='C:/Users/ssrivas/Desktop/Apurv/UC Davis/MS Degree/MS comprehensive/NMA' # Replace with your wd
+#dat = readRDS(paste(dat.path,"session",ID,".rds",sep=''))
+dat = readRDS('session22.rds')
+names(dat)
+
+# Summarize the active trials
+
+scenario.type=c('L (1, ip)','R (-1, ct)','N (0)','B')
+contrast_LmR = dat$contrast_left-dat$contrast_right;
+scenario = numeric(length(contrast_LmR))
+for(i in 1:length(scenario)){
+  if( dat$contrast_left[i]==0 &  dat$contrast_right[i]==0){
+    scenario[i]='N (0)'
+  }else if (contrast_LmR[i] >0){
+    scenario[i]='L (1, ip)'
+  }else if (contrast_LmR[i] < 0){
+    scenario[i]='R (-1, ct)'
+  }else{
+    scenario[i]='B'
+  }
+  
+}
+dat$scenario=scenario;
+
+
+sum.tab<-matrix(0,nrow=length(scenario.type),ncol=7)
+for(i in 1:length(scenario.type) ){
+  ids = which(dat$scenario==scenario.type[i])
+  
+  n.tmp=length(ids);
+  fb=dat$feedback_type[ids]
+  rsp=dat$response[ids]
+  cts=dat$contrast_left[ids]-dat$contrast_right[ids]
+  if(i==4){
+    # success: not 0
+    success= (rsp!=0);
+    
+  }else if (i==3){
+    # success:  0
+    success= (rsp==0);
+  }else{
+    # success: same sign
+    success = (rsp*cts)>0
+  }
+  
+  tmp<-c(sum(success==FALSE),
+         sum(success==TRUE & fb==1),
+         sum(success==TRUE & fb==-1),
+         n.tmp)
+  sum.tab[i,]<-c(tmp,tmp[1:3]/tmp[4])
+}
+
+
+rownames(sum.tab)<-scenario.type
+colnames(sum.tab)<-c('Failure', 'Success', 'Success w/o rewards', 'Total','Failure (prob)', 'Success (prob)', 'Success w/o rewards  (prob)' )
+
+round(sum.tab,digits=2) %>%
+  kable("html",caption=paste("Summary of stimuli scenarios and response across", length(dat$feedback_type ) ,"trials for Session", ID, "Mouse", 
+                             dat$mouse_name, "Date", dat$date_exp )) # %>%
+  #as.character() %>%
+  #display_html()
+```
+
+
+```{r}
+class(dat)
+str(dat)
+table(scenario)
+table(scenario.type)
+sum.tab
+#table(brain_region)
+
+#dim(dat)
+#head(dat)
+```
+```{r}
+spks<-dat$spks
+class(spks)
+
+data1<-data.frame(spks[, ,51:90])
+brain_region<-dat$brain_region
+brain_data.Q1<-data.frame(cbind(brain_region,data1))
+#data1$brain_data<-rep(dat$brain_region,250)
+
+#dim(data1)
+dim(brain_data.Q1)
+class(brain_data.Q1)
+#head(brain_data)
+table(brain_region)
+```
+
+
+##### agrregate data for brain_data.Q1: mean 
+
+```{r, warning=FALSE, echo=FALSE}
+outlier_brain_data.Q1<-data.frame(brain_data.Q1)
+#dim(outlier_brain_data.Q1)
+#class(brain_data.Q1)
+#head(brain_data.Q1)
+attach(outlier_brain_data.Q1)
+outlier_agg.Q1 = aggregate(outlier_brain_data.Q1[,-1],
+               by = list(as.factor(outlier_brain_data.Q1$brain_region)),FUN = mean)
+```
+
+
+```{r}
+#dim(outlier_agg.Q1)
+str(outlier_agg.Q1)
+```
+
+
+```{r}
+noutlier_agg.Q1<-data.frame(t(outlier_agg.Q1[,-1]))
+names(noutlier_agg.Q1)<-c("basal.ganglia","midbrain","other","other.ctx", "vis.ctx")
+#dim(noutlier_agg.Q1)
+head(noutlier_agg.Q1)
+#class(noutlier_agg.Q1)
+```
+
+```{r}
+# Compute t-test
+res1 <- t.test(noutlier_agg.Q1$other, noutlier_agg.Q1$basal.ganglia, paired = TRUE)
+res2 <- t.test(noutlier_agg.Q1$other, noutlier_agg.Q1$midbrain, paired = TRUE)
+res3 <- t.test(noutlier_agg.Q1$other, noutlier_agg.Q1$other.ctx, paired = TRUE)
+res4 <- t.test(noutlier_agg.Q1$other, noutlier_agg.Q1$vis.ctx, paired = TRUE)
+res1;res2;res3;res4
+```
+
+
+
+
+
+```{r}
+nbrain_data.Q1 <- brain_data.Q1 %>%                               # Replacing values
+  mutate(brain_region = replace(brain_region, brain_region == "other", "other ctx"))
+#data_new
+
+table(nbrain_data.Q1$brain_region)
+```
+
+```{r}
+data.Q1<-t(nbrain_data.Q1[,-1])
+#dim(data.Q1)
+```
+
+```{r}
+spks<-dat$spks
+class(spks)
+
+data2<-data.frame(spks[, ,31:90])
+#brain_region<-dat$brain_region
+brain_data.Q2<-data.frame(cbind(brain_region,data2))
+#data1$brain_data<-rep(dat$brain_region,250)
+
+#dim(data1)
+#dim(brain_data.Q2)
+class(brain_data.Q2)
+#head(brain_data)
+#table(brain_region)
+```
+
+
+
+```{r}
+nbrain_data.Q2 <- brain_data.Q2 %>%                               # Replacing values
+  mutate(brain_region = replace(brain_region, brain_region == "other", "other ctx"))
+#data_new
+
+table(nbrain_data.Q2$brain_region)
+```
+
+```{r}
+data.Q2<-t(nbrain_data.Q2[,-1])
+#dim(data.Q2)
+```
+
+```{r}
+#write.table(t(brain_data.Q1), file="brain_data.Q1.txt")
+#write.table(t(brain_data.Q2), file="brain_data.Q2.txt")
+```
+
+
+
+```{r}
+#head(ndata2)
+time.bin<-rep(51:90, each=444)
+trial.no<-rep(1:444, each=40)
+contrast_right<-dat$contrast_right
+contrast_left<-dat$contrast_left
+stimulus<-contrast_left-contrast_right
+stimulus.type<-rep(stimulus,40)
+
+
+bin_size<-rep(dat$bin_size,40)
+feedback_type<-rep(dat$feedback_type,40)
+stim_onset<-rep(dat$stim_onset,40)
+reaction_time<- rep(dat$reaction_time[,1], 40)
+reaction_type<- rep(dat$reaction_time[,2], 40)
+#names(reaction_time)<-c("reaction_time","reaction_type")
+response<-rep(dat$response,40)
+scenario<-rep(dat$scenario, 40)
+
+ndata.Q1<-data.frame(cbind(trial.no,time.bin, stimulus.type, bin_size, feedback_type,stim_onset,response,scenario,reaction_time,reaction_type,contrast_right, contrast_left))
+#names(ndata.Q1)<-c("trial.no", "time.bin", "stimulus.type", c("V1":"V646"))
+
+#dim(ndata.Q1)
+str(ndata.Q1)
+#head(ndata.Q1)
+#tail(ndata.Q1)
+```
+
+
+```{r}
+time.bin<-rep(31:90, each=444)
+trial.no<-rep(1:444, each=60)
+contrast_right<-dat$contrast_right
+contrast_left<-dat$contrast_left
+stimulus<-contrast_left-contrast_right
+stimulus.type<-rep(stimulus,60)
+
+
+bin_size<-rep(dat$bin_size,60)
+feedback_type<-rep(dat$feedback_type,60)
+stim_onset<-rep(dat$stim_onset,60)
+reaction_time<- rep(dat$reaction_time[,1], 60)
+reaction_type<- rep(dat$reaction_time[,2], 60)
+#names(reaction_time)<-c("reaction_time","reaction_type")
+response<-rep(dat$response,60)
+scenario<-rep(dat$scenario, 60)
+
+ndata.Q2<-data.frame(cbind(trial.no,time.bin, stimulus.type, bin_size, feedback_type,stim_onset,response,scenario,reaction_time,reaction_type,contrast_right, contrast_left))
+
+#names(ndata.Q2)<-c("trial.no", "time.bin", "stimulus.type", c("V1":"V646"))
+dim(ndata.Q2)
+str(ndata.Q2)
+```
+
+
+```{r}
+#ndata..Q1$spks<-as.integer(ndata..Q1$spks)
+ndata.Q1$bin_size<-as.numeric(ndata.Q1$bin_size)
+ndata.Q1$feedback_type<-as.factor(ndata.Q1$feedback_type)
+ndata.Q1$stim_onset<-as.numeric(ndata.Q1$stim_onset)
+ndata.Q1$contrast_right<-as.numeric(ndata.Q1$contrast_right)
+ndata.Q1$contrast_left<-as.numeric(ndata.Q1$contrast_left)
+ndata.Q1$stimulus.type<-as.factor(ndata.Q1$stimulus.type)
+#neuro_data$brain_region<-as.factor(data$brain_region)
+ndata.Q1$response<-as.numeric(ndata.Q1$response)
+ndata.Q1$reaction_time<-as.numeric(ndata.Q1$reaction_time)
+ndata.Q1$reaction_type<-as.factor(ndata.Q1$reaction_type)
+ndata.Q1$scenario<-as.factor(ndata.Q1$scenario)
+
+ndata.Q1$trial.no<-as.factor(ndata.Q1$trial.no)
+ndata.Q1$time.bin<-as.factor(ndata.Q1$time.bin)
+
+attach(ndata.Q1)
+
+dim(ndata.Q1)
+str(ndata.Q1)
+```
+
+
+
+```{r}
+#ndata..Q1$spks<-as.integer(ndata..Q1$spks)
+ndata.Q2$bin_size<-as.numeric(ndata.Q2$bin_size)
+ndata.Q2$feedback_type<-as.factor(ndata.Q2$feedback_type)
+ndata.Q2$stim_onset<-as.numeric(ndata.Q2$stim_onset)
+ndata.Q2$contrast_right<-as.numeric(ndata.Q2$contrast_right)
+ndata.Q2$contrast_left<-as.numeric(ndata.Q2$contrast_left)
+ndata.Q2$stimulus.type<-as.factor(ndata.Q2$stimulus.type)
+#neuro_data$brain_region<-as.factor(data$brain_region)
+ndata.Q2$response<-as.numeric(ndata.Q2$response)
+ndata.Q2$reaction_time<-as.numeric(ndata.Q2$reaction_time)
+ndata.Q2$reaction_type<-as.factor(ndata.Q2$reaction_type)
+ndata.Q2$scenario<-as.factor(ndata.Q2$scenario)
+
+ndata.Q2$trial.no<-as.factor(ndata.Q2$trial.no)
+ndata.Q2$time.bin<-as.factor(ndata.Q2$time.bin)
+
+attach(ndata.Q2)
+
+dim(ndata.Q2)
+str(ndata.Q2)
+```
+
+
+```{r}
+
+#write.table(ndata3, file="neuro_data.txt")
+#write.table(t(data.frame(brain_data)), file="nbrain_data.txt")
+```
+
+```{r}
+table(nbrain_data.Q1$brain_region)
+```
+
+
+##### agrregate data for Q1: mean 
+
+```{r}
+
+nbrain_data.Q1<-data.frame(nbrain_data.Q1)
+#dim(nbrain_data.Q1)
+#class(brain_data.Q1)
+#head(brain_data.Q1)
+attach(nbrain_data.Q1)
+agg.Q1 = aggregate(nbrain_data.Q1[,-1],
+               by = list(as.factor(nbrain_data.Q1$brain_region)),FUN = mean)
+```
+
+
+```{r}
+#print(agg.Q1)
+dim(agg.Q1)
+#head(agg.Q1)
+#class(agg.Q1)
+
+```
+
+
+```{r}
+#summary(t(agg.Q1))
+```
+
+##### agrregate data for Q2: mean 
+
+```{r}
+nbrain_data.Q2<-data.frame(nbrain_data.Q2)
+#dim(nbrain_data.Q2)
+#class(brain_data.Q1)
+#head(brain_data.Q1)
+attach(nbrain_data.Q2)
+agg.Q2 = aggregate(nbrain_data.Q2[,-1],
+               by = list(as.factor(nbrain_data.Q2$brain_region)),FUN = mean)
+```
+
+
+```{r}
+dim(agg.Q2)
+#head(agg.Q2)
+#class(agg.Q2)
+
+```
+
+##### Complete data for Q1
+
+```{r}
+complete_data.Q1<-cbind(ndata.Q1[,1:12],t(agg.Q1[,-1]))
+
+names(complete_data.Q1)<-c("trial.no","time.bin","stimulus.type","bin_size","feedback_type","stim_onset","response","scenario", "reaction_time", "reaction_type", "contrast_right","contrast_left", "basal.ganglia","midbrain","other.ctx", "vis.ctx")
+dim(complete_data.Q1)
+str(complete_data.Q1)
+```
+
+##### Complete data for Q2
+
+```{r}
+complete_data.Q2<-cbind(ndata.Q2[,1:12],t(agg.Q2[,-1]))
+
+names(complete_data.Q2)<-c("trial.no","time.bin","stimulus.type","bin_size","feedback_type","stim_onset","response","scenario", "reaction_time", "reaction_type", "contrast_right","contrast_left", "basal.ganglia","midbrain","other.ctx", "vis.ctx")
+dim(complete_data.Q2)
+str(complete_data.Q2)
+```
+
+
+```{r}
+#write.table(complete_data.Q1, file="complete_brain_data_Q1.txt")
+#write.table(complete_data.Q2, file="complete_brain_data_Q2.txt")
+```
+
+##### $\bf \text{Summary data for Question 1:}$
+
+```{r}
+summdata.Q1 = group_by(complete_data.Q1, time.bin, stimulus.type) %>%
+  summarise(
+    
+    time.bin = time.bin,
+    #trial.no = trial.no,
+    stimulus.type=stimulus.type,
+    mean_basal.ganglia = mean(basal.ganglia),
+    mean_midbrain=mean(midbrain),
+    mean_other.ctx=mean(other.ctx), 
+    mean_vis.ctx=mean(vis.ctx)
+  )
+summdata.Q1<-data.frame(unique(summdata.Q1))
+
+
+summdata.Q1[1:9,]
+
+dim(summdata.Q1)
+#print(summ_table.Q1)
+```
+
+
+```{r}
+
+### Another method to calculate summary
+#summdata.Q1 %>%
+ # group_by(stimulus.type, time.bin) %>%
+#  get_summary_stats(mean_basal.ganglia, type = "mean_sd")
+```
+
+
+##### $\bf \text{Visualization for Question 1:}$ 
+
+```{r}
+
+bxp.Q1b1 <- ggboxplot(
+  summdata.Q1, x = "stimulus.type", y = "mean_basal.ganglia",
+  color = "stimulus.type", add = "point"
+  )
+#bxp.Q1b
+
+
+bxp.Q1b2 <- ggboxplot(
+  summdata.Q1, x = "stimulus.type", y = "mean_midbrain",
+  color = "stimulus.type", add = "point"
+  )
+#bxp.Q1b2
+
+bxp.Q1b3 <- ggboxplot(
+  summdata.Q1, x = "stimulus.type", y = "mean_vis.ctx",
+  color = "stimulus.type", add = "point"
+  )
+#bxp.Q1b3
+
+bxp.Q1b4 <- ggboxplot(
+  summdata.Q1, x = "stimulus.type", y = "mean_other.ctx",
+  color = "stimulus.type", add = "point"
+  )
+#bxp.Q1b4
+
+
+#############################################################################################
+##### time bin boxplots
+
+bxp.Q1c1 <- ggboxplot(summdata.Q1, x = "time.bin", y = "mean_basal.ganglia", add = "point")
+#bxp.Q1c
+
+bxp.Q1c2 <- ggboxplot(summdata.Q1, x = "time.bin", y = "mean_midbrain", add = "point")
+#bxp.Q1c2
+
+bxp.Q1c3 <- ggboxplot(summdata.Q1, x = "time.bin", y = "mean_vis.ctx", add = "point")
+#bxp.Q1c3
+
+bxp.Q1c4 <- ggboxplot(summdata.Q1, x = "time.bin", y = "mean_other.ctx", add = "point")
+#bxp.Q1c4
+
+
+
+###########################################################################################
+##### time bin plots with points
+
+bxp.Q1a1 <- ggboxplot(
+  summdata.Q1, x = "time.bin", y = "mean_basal.ganglia", color = "stimulus.type", add = "point") 
+#palette = "jco")
+#bxp.Q1a1
+
+bxp.Q1a2 <- ggboxplot(
+  summdata.Q1, x = "time.bin", y = "mean_midbrain", color = "stimulus.type", add = "point") 
+#palette = "jco")
+#bxp.Q1a2
+
+
+bxp.Q1a3 <- ggboxplot(
+  summdata.Q1, x = "time.bin", y = "mean_vis.ctx", color = "stimulus.type", add = "point") 
+#palette = "jco")
+#bxp.Q1a3
+
+
+bxp.Q1a4 <- ggboxplot(
+  summdata.Q1, x = "time.bin", y = "mean_other.ctx", color = "stimulus.type", add = "point") 
+#palette = "jco")
+#bxp.Q1a4
+
+
+```
+
+
+
+```{r}
+#grid.arrange(bxp.Q1b,bxp.Q1b2,bxp.Q1b3,bxp.Q1b4, ncol=2)
+grid.arrange(bxp.Q1c1,bxp.Q1c2,bxp.Q1c3,bxp.Q1c4, ncol=2)
+
+grid.arrange(bxp.Q1b1,bxp.Q1b2, nrow=2)
+grid.arrange(bxp.Q1b3,bxp.Q1b4, nrow=2)
+```
+
+
+##### $\bf \text{Check assumptions: Outliers}$
+
+```{r}
+summdata.Q1 %>%
+  group_by(time.bin) %>%
+  identify_outliers(mean_basal.ganglia)
+
+summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  identify_outliers(mean_midbrain)
+
+summdata.Q1 %>%
+  group_by(time.bin) %>%
+  identify_outliers(mean_other.ctx)
+
+summdata.Q1 %>%
+  group_by(time.bin) %>%
+  identify_outliers(mean_vis.ctx)
+
+```
+
+##### $\bf Comments:$ There were no extreme outliers for stimulus.type
+
+\ \
+
+##### $\bf \text{Normality assumption:}$
+
+```{r}
+summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  shapiro_test(mean_basal.ganglia)
+
+summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  shapiro_test(mean_midbrain)
+
+summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  shapiro_test(mean_vis.ctx)
+
+summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  shapiro_test(mean_other.ctx)
+```
+
+##### $\bf Comments:$ The mean_basal.ganglia score was normally distributed at each time point, as assessed by Shapiro-Wilk’s test (p > 0.05).
+
+##### The normality assumption can be checked by computing Shapiro-Wilk test for each stimulus point. If the data is normally distributed, the p-value should be greater than 0.05.
+
+##### Note that, if your sample size is greater than 50, the normal QQ plot is preferred because at larger sample sizes the Shapiro-Wilk test becomes very sensitive even to a minor deviation from normality.
+
+
+\ \
+
+##### $\bf QQ-Plots:$
+
+```{r}
+ggqqplot(summdata.Q1, "mean_basal.ganglia", facet.by = "stimulus.type",main="QQ plots for Basal Ganglia across Stimulus Type")
+
+ggqqplot(summdata.Q1, "mean_midbrain", facet.by = "stimulus.type",main="QQ plots for Midbrain across Stimulus Type")
+
+ggqqplot(summdata.Q1, "mean_vis.ctx", facet.by = "stimulus.type",main="QQ plots for Visual Cortexacross Stimulus Type")
+
+ggqqplot(summdata.Q1, "mean_other.ctx", facet.by = "stimulus.type",main="QQ plots for Other Cortex across Stimulus Type")
+```
+
+##### $\bf Comments:$ From the plot above, as all the points fall approximately along the reference line, we can assume normality.
+
+ \ \
+ 
+##### $\bf \text{Sphericity Assumption:}$
+
+##### Assumption of sphericity: The assumption of sphericity refers to the equality of variances of the differences between treatment levels. In Repeated Measures ANOVA it is a measure of the homogeneity of the variances of the differences between levels so it is quite similar to homogeneity of variance in between-groups in the univariate ANOVA.
+
+##### The assumption of sphericity will be automatically checked during the computation of the ANOVA test using the R function anova_test() [rstatix package]. The Mauchly’s test is internally used to assess the sphericity assumption.
+
+##### By using the function get_anova_table() [rstatix] to extract the ANOVA table, the Greenhouse-Geisser sphericity correction is automatically applied to factors violating the sphericity assumption.
+
+
+```{r}
+str(summdata.Q1)
+```
+```{r}
+summdata.Q1.BG<-summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  get_summary_stats(mean_basal.ganglia, type = "mean_sd")
+
+summdata.Q1.MB<-summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  get_summary_stats(mean_midbrain, type = "mean_sd")
+
+summdata.Q1.OC<-summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  get_summary_stats(mean_other.ctx, type = "mean_sd")
+
+summdata.Q1.VC<-summdata.Q1 %>%
+  group_by(stimulus.type) %>%
+  get_summary_stats( mean_vis.ctx, type = "mean_sd")
+
+write.csv(summdata.Q1.BG, file="summdata.Q1.BG.csv")
+write.csv(summdata.Q1.MB, file="summdata.Q1.MB.csv")
+write.csv(summdata.Q1.OC, file="summdata.Q1.OC.csv")
+write.csv(summdata.Q1.VC, file="summdata.Q1.VC.csv")
+```
+
+
+```{r}
+res.aov1 <- aov(mean_basal.ganglia~factor(stimulus.type)+Error(factor(time.bin)), data = summdata.Q1)
+summary(res.aov1)
+
+res.aov2 <- aov(mean_midbrain~factor(stimulus.type)+Error(factor(time.bin)), data = summdata.Q1)
+summary(res.aov2)
+
+res.aov3 <- aov(mean_other.ctx~factor(stimulus.type)+Error(factor(time.bin)), data = summdata.Q1)
+summary(res.aov3)
+
+res.aov4 <- aov(mean_vis.ctx~factor(stimulus.type)+Error(factor(time.bin)), data = summdata.Q1)
+summary(res.aov4)
+```
+
+```{r}
+##### Another way to perform one way ANOVA
+
+#model = aov(formula = mean_basal.ganglia ~ factor(stimulus.type)+Error(factor(time.bin)/factor(stimulus.type)), data=summdata.Q1) 
+#summary(model)
+```
+
+```{r}
+res.aov11 <- anova_test(data = summdata.Q1, dv = mean_basal.ganglia, wid = time.bin, within = stimulus.type)
+get_anova_table(res.aov11)
+#summary(res.aov1)
+
+res.aov22 <- anova_test(data = summdata.Q1, dv = mean_midbrain, wid = time.bin, within = stimulus.type)
+get_anova_table(res.aov22)
+
+res.aov33 <- anova_test(data = summdata.Q1, dv = mean_other.ctx, wid =  time.bin, within = stimulus.type)
+get_anova_table(res.aov33)
+
+res.aov44 <- anova_test(data = summdata.Q1, dv = mean_vis.ctx, wid =  time.bin, within = stimulus.type)
+get_anova_table(res.aov44)
+
+```
+
+##### Results showed that the type of stimulus type used lead to statistically significant differences in mean_basal.ganglia during the time.bin (F(4, 158) = 9.38, p = 6.7e-07).
+
+##### Results showed that the type of stimulus type used lead to statistically significant differences in mean_midbrain during the time.bin (F(5, 209) = 23.3, p=1.81e-19).
+
+##### Results showed that the type of stimulus type used lead to statistically significant differences in mean_other.ctx during the time.bin (F(3, 122) = 39.9, p=1.5e-18).
+
+##### Results showed that the type of stimulus type used lead to statistically significant differences in mean_vis.ctx during the time.bin (F(3, 117) = 9.23, p = 1.6e-05).
+
+
+########################################################################################################################################### 
+
+
+##### The mean_basal.ganglia score was statistically significantly different at the different stimulus points, p = 6.7e-07, eta2[g] = 0.163.
+##### The mean_midbrain score was statistically significantly different at the different stimulus points, p = 1.81e-19, eta2[g] = 0.25.
+##### The mean_other.ctx score was statistically significantly different at the different stimulus points, p = 1.5e-18, eta2[g] = 0.221.
+##### The mean_vis.ctx score was statistically significantly different at the different stimulus points, p = 1.6e-05, eta2[g] = 0.105.
+
+##### $\bullet:$ ges is the generalized effect size (amount of variability due to the within-subjects factor) i.e.,  is useful in repeated-measures designs, as it can estimate what a within-subject effect size would have been had that predictor been manipulated between-subjects.
+
+
+##### $\bf \text{Post-hoc tests:}$
+
+##### multiple pairwise paired t-tests between the levels of the within-subjects factor (here stimulus-type). P-values are adjusted using the Bonferroni multiple testing correction method.
+
+```{r}
+# pairwise comparisons
+pwc.Q1 <- summdata.Q1 %>%
+  pairwise_t_test(
+    mean_basal.ganglia ~ stimulus.type, paired = TRUE,
+    p.adjust.method = "bonferroni"
+    )
+pwc.Q1
+
+pwc.Q2 <- summdata.Q1 %>%
+  pairwise_t_test(
+    mean_midbrain ~ stimulus.type, paired = TRUE,
+    p.adjust.method = "bonferroni"
+    )
+pwc.Q2
+
+pwc.Q3 <- summdata.Q1 %>%
+  pairwise_t_test(
+    mean_vis.ctx ~ stimulus.type, paired = TRUE,
+    p.adjust.method = "bonferroni"
+    )
+pwc.Q3
+
+pwc.Q4 <- summdata.Q1 %>%
+  pairwise_t_test(
+    mean_other.ctx ~ stimulus.type, paired = TRUE,
+    p.adjust.method = "bonferroni"
+    )
+pwc.Q4
+```
+
+
+```{r}
+table.pwc.Q1<-data.frame(pwc.Q1)
+#which(table.pwc.Q4$(p.adj>=0.005)
+p.values_BG<-data.frame(subset(table.pwc.Q1, subset=(p.adj<=0.05)))
+p.values_BG
+
+table.pwc.Q2<-data.frame(pwc.Q2)
+#which(table.pwc.Q4$(p.adj>=0.005)
+p.values_MB<-data.frame(subset(table.pwc.Q2, subset=(p.adj<=0.05)))
+p.values_MB
+
+table.pwc.Q3<-data.frame(pwc.Q3)
+#which(table.pwc.Q4$(p.adj>=0.005)
+p.values_VC<- data.frame(subset(table.pwc.Q3, subset=(p.adj<=0.05)))
+p.values_VC
+
+table.pwc.Q4<-data.frame(pwc.Q4)
+#which(table.pwc.Q4$(p.adj>=0.005)
+p.values_OC<-data.frame(subset(table.pwc.Q4, subset=(p.adj<=0.005)))
+p.values_OC
+      
+write.table(p.values_BG, file="p.values_BG.txt")
+write.table(p.values_MB, file="p.values_MB.txt")
+write.table(p.values_VC, file="p.values_VC.txt")
+write.table(p.values_OC, file="p.values_OC.txt")
+```
+##### Report: The mean_basal.ganglia score was statistically significantly different at the different time points, F(2, 18) = 55.5, p < 0.002, generalized eta squared = 0.16.
+
+##### Post-hoc analyses with a Bonferroni adjustment revealed that the following pairwise differences, between stimulus type, were statistically significantly different (p <= 0.05).
+
+\ \
+
+##### $\bf \text{Visualization: box plots with p-values}$
+
+```{r}
+pwc.Q1 <- pwc.Q1 %>% add_xy_position(x = "stimulus.type")
+bxp.Q1b1 + 
+  stat_pvalue_manual(pwc.Q1) +
+  labs(
+    subtitle = get_test_label(res.aov11, detailed = TRUE),
+    caption = get_pwc_label(pwc.Q1)
+  )
+
+pwc.Q2 <- pwc.Q2 %>% add_xy_position(x = "stimulus.type")
+bxp.Q1b2 + 
+  stat_pvalue_manual(pwc.Q2) +
+  labs(
+    subtitle = get_test_label(res.aov22, detailed = TRUE),
+    caption = get_pwc_label(pwc.Q2)
+  )
+
+pwc.Q3 <- pwc.Q3 %>% add_xy_position(x = "stimulus.type")
+bxp.Q1b3 + 
+  stat_pvalue_manual(pwc.Q3) +
+  labs(
+    subtitle = get_test_label(res.aov33, detailed = TRUE),
+    caption = get_pwc_label(pwc.Q3)
+  )
+
+pwc.Q4 <- pwc.Q4 %>% add_xy_position(x = "stimulus.type")
+bxp.Q1b4 + 
+  stat_pvalue_manual(pwc.Q4) +
+  labs(
+    subtitle = get_test_label(res.aov44, detailed = TRUE),
+    caption = get_pwc_label(pwc.Q4)
+  )
+```
+
+
+```{r}
+#str(complete_data.Q1)
+```
+
+##### $\bf \text{Examine whether there exist heterogeneous effects of stimuli across neurons within each brain regions.}$
+
+```{r}
+oneway.BG <- aov(basal.ganglia ~ stimulus.type, data = complete_data.Q1)
+summary(oneway.BG)
+
+oneway.MB <- aov(midbrain ~ stimulus.type, data = complete_data.Q1)
+summary(oneway.MB)
+
+oneway.OC <- aov(other.ctx ~ stimulus.type, data = complete_data.Q1)
+summary(oneway.OC)
+
+oneway.VC <- aov(vis.ctx ~ stimulus.type, data = complete_data.Q1)
+summary(oneway.VC)
+```
+
+##### The p-value of the stimulus.type variable is quite low so it appears that the type of stimulus.type used has a real impact on the brain region of basal.ganglia.
+
+\ \
+
+##### Wide form to Long form Data for Question 1
+
+```{r}
+complete_data.Q1$idvar<-c(1:17760)
+library("reshape2") 
+data_long.Q1 <- melt(complete_data.Q1[,c(2,3,5,13:16)],                                 # Apply melt function
+                  id.vars = c("time.bin", "stimulus.type", "feedback_type"))
+#data_long   
+names(data_long.Q1)<-c("time.bin","stimulus.type", "feedback_type", "brain_region",  "response")
+
+dim(data_long.Q1)
+head(data_long.Q1)
+```
+
+\ \
+
+##### $\bf \text{Examine whether each region's response to stimuli is associated with the outcome of the trial (success or failure.}$
+
+```{r}
+str(complete_data.Q1)
+stat.test.BG <- complete_data.Q1 %>% 
+  t_test(basal.ganglia ~ feedback_type) %>%
+  add_significance()
+stat.test.BG
+
+stat.test.MB <- complete_data.Q1 %>% 
+  t_test(midbrain ~ feedback_type) %>%
+  add_significance()
+stat.test.MB
+
+stat.test.VC <- complete_data.Q1 %>% 
+  t_test(vis.ctx ~ feedback_type) %>%
+  add_significance()
+stat.test.VC
+
+stat.test.OC <- complete_data.Q1 %>% 
+  t_test(other.ctx ~ feedback_type) %>%
+  add_significance()
+stat.test.OC
+```
+
+\ \
+
+##### $\bf \text{Boxplots for brain regions vs feedback_type:}$
+
+```{r}
+
+
+bxp.bg <- ggboxplot(
+  complete_data.Q1, x = "feedback_type", y = "basal.ganglia", 
+  ylab = "basal.ganglia", xlab = "feedback.type", color=c("red","blue" ), fill = c("wheat","grey")
+  )
+#bxp.bg
+
+bxp.mb <- ggboxplot(
+  complete_data.Q1, x = "feedback_type", y = "midbrain", 
+  ylab = "mid.brain", xlab = "feedback.type", color=c("red","blue" ), fill = c("wheat","grey")
+  )
+#bxp.mb
+
+bxp.vc <- ggboxplot(
+  complete_data.Q1, x = "feedback_type", y = "vis.ctx", 
+  ylab = "visual.cortex", xlab = "feedback.type", color=c("red","blue" ), fill = c("wheat","grey")
+  )
+#bxp.vc
+
+bxp.oc <- ggboxplot(
+  complete_data.Q1, x = "feedback_type", y = "other.ctx", 
+  ylab = "other.cortex", xlab = "feedback.type", color=c("red","blue" ), fill = c("wheat","grey")
+  )
+#bxp.oc
+
+grid.arrange(bxp.bg,bxp.mb,bxp.vc,bxp.oc, ncol=2)
+#par(mfrow = c(2, 2))
+
+```
+
+
+\ \
+
+##### $\bf \text{Question 2. Build a predictive model to forecast the reaction (-1, 0, or 1) given the neural activity across}$
+##### $\bf \text{all regions. Here the neural activity is restricted to the period between 0.2 seconds before stimulus onset,}$
+##### $\bf \text{and 0.4 after the stimulus onset or before the reaction.}$
+
+```{r}
+str(complete_data.Q2)
+```
+
+```{r}
+summdata.Q2.b = group_by(complete_data.Q2, trial.no) %>%
+  summarise(
+    trial.no = as.numeric(trial.no),
+    mean_basal.ganglia = mean(basal.ganglia),
+    mean_midbrain=mean(midbrain),
+    mean_other.ctx=mean(other.ctx), 
+    mean_vis.ctx=mean(vis.ctx),
+  )
+summdata.Q2.b<-data.frame(unique(summdata.Q2.b))
+summ_table.Q2.b<-knitr::kable(summdata.Q2.b, caption = "Table: Summary statistics of infection count  by vita and time")
+
+dim(summdata.Q2.b)
+```
+
+
+```{r}
+#print(arrange(summdata.Q2.b))
+```
+
+```{r}
+ndata.Q2.b<-cbind(summdata.Q2.b, as.vector(dat$feedback_type), as.vector(dat$response), as.vector(dat$contrast_left-dat$contrast_right))
+names(ndata.Q2.b)<-c("trial.no","mean_basal.ganglia","mean_midbrain","mean_other.ctx","mean_vis.ctx","feedback_type", "response","stimulus_type")
+str(ndata.Q2.b)
+```
+
+
+```{r}
+table(ndata.Q2.b$response)
+```
+
+##### $\bf \text{Dataset-I for Question 2:}$
+
+```{r}
+gee.data1<- ndata.Q2.b[!ndata.Q2.b$response == -1, ]
+
+gee.data1$trial.no<-as.factor(gee.data1$trial.no)
+gee.data1$feedback_type<-as.factor(gee.data1$feedback_type)
+#gee.data1$response<-as.factor(gee.data1$response)
+gee.data1$stimulus_type<-as.factor(gee.data1$stimulus_type)
+
+dim(gee.data1)
+str(gee.data1)
+```
+
+##### $\bf \text{Dataset-II for Question 2:}$
+
+```{r}
+gee.data2<- ndata.Q2.b[!ndata.Q2.b$response == 1, ]
+gee.data2["response"][gee.data2["response"] == -1] <- 1
+
+gee.data2$trial.no<-as.factor(gee.data2$trial.no)
+gee.data2$feedback_type<-as.factor(gee.data2$feedback_type)
+#gee.data2$response<-as.factor(gee.data2$response)
+gee.data2$stimulus_type<-as.factor(gee.data2$stimulus_type)
+
+dim(gee.data2)
+str(gee.data2)
+```
+
+##### $\bf \text{Dataset-III for Question 2:}$
+
+```{r}
+gee.data3<- ndata.Q2.b[!ndata.Q2.b$response == 0, ]
+gee.data3["response"][gee.data3["response"] == -1] <- 0
+
+gee.data3$trial.no<-as.factor(gee.data3$trial.no)
+gee.data3$feedback_type<-as.factor(gee.data3$feedback_type)
+#gee.data1$response<-as.factor(gee.data1$response)
+gee.data3$stimulus_type<-as.factor(gee.data3$stimulus_type)
+
+dim(gee.data3)
+str(gee.data3)
+```
+
+```{r}
+table(gee.data1$response)
+table(gee.data2$response)
+table(gee.data3$response)
+```
+
+##### $\bf \text{Correlation matrix:}$
+
+```{r}
+cor(gee.data1[,-c(1,6:8)],use="pairwise.complete.obs")
+cor(gee.data2[,-c(1,6:8)],use="pairwise.complete.obs")
+cor(gee.data3[,-c(1,6:8)],use="pairwise.complete.obs")
+```
+
+
+```{r}
+library(dplyr)
+gee.data1<-gee.data1 %>%
+  mutate(stimulus_type=recode(stimulus_type, '-1'='-1','-0.75'='-1','-0.5'='-1','-0.25'='-1', '1'='1','0.75'='1','0.5'='1','0.25'='1'))
+dim(gee.data1)
+
+#str(gee.data1)
+gee.data1$stimulus_type<-relevel(gee.data1$stimulus_type,"0")
+
+gee.model1 <- geeglm(response~mean_basal.ganglia+mean_midbrain+mean_other.ctx+mean_vis.ctx+stimulus_type, data=gee.data1, id = stimulus_type, family=binomial(link="logit"), corstr="ar1")
+summary(gee.model1)
+```
+
+
+```{r}
+gee.model1int <- geeglm(response~mean_basal.ganglia*stimulus_type+mean_midbrain*stimulus_type+mean_other.ctx*stimulus_type+mean_vis.ctx*stimulus_type, data=gee.data1, id = stimulus_type, family=binomial(link="logit"), corstr="ar1")
+summary(gee.model1int)
+```
+
+```{r}
+gee.data2<-gee.data2 %>%
+  mutate(stimulus_type=recode(stimulus_type, '-1'='-1','-0.75'='-1','-0.5'='-1','-0.25'='-1', '1'='1','0.75'='1','0.5'='1','0.25'='1'))
+dim(gee.data2)
+
+gee.data2$stimulus_type<-relevel(gee.data2$stimulus_type,"0")
+
+gee.model2 <- geeglm(response~mean_basal.ganglia+mean_midbrain+mean_other.ctx+mean_vis.ctx+stimulus_type, data=gee.data2, id = stimulus_type, family=binomial(link="logit"), corstr="ar1")
+summary(gee.model2)
+```
+
+
+```{r}
+gee.model2int <- geeglm(response~mean_basal.ganglia*stimulus_type+mean_midbrain*stimulus_type+mean_other.ctx*stimulus_type+mean_vis.ctx*stimulus_type, data=gee.data2, id = stimulus_type, family=binomial(link="logit"), corstr="ar1")
+summary(gee.model2int)
+```
+
+```{r}
+gee.data3<-gee.data3 %>%
+  mutate(stimulus_type=recode(stimulus_type, '-1'='-1','-0.75'='-1','-0.5'='-1','-0.25'='-1', '1'='1','0.75'='1','0.5'='1','0.25'='1'))
+dim(gee.data3)
+
+gee.data3$stimulus_type<-relevel(gee.data3$stimulus_type,"0")
+
+gee.model3 <- geeglm(response~mean_basal.ganglia+mean_midbrain+mean_other.ctx+mean_vis.ctx+stimulus_type, data=gee.data3, id = stimulus_type, family=binomial(link="logit"), corstr="ar1")
+summary(gee.model3)
+```
+
+
+```{r}
+gee.model3int <- geeglm(response~mean_basal.ganglia*stimulus_type+mean_midbrain*stimulus_type+mean_other.ctx*stimulus_type+mean_vis.ctx*stimulus_type, data=gee.data3, id = stimulus_type, family=binomial(link="logit"), corstr="ar1")
+summary(gee.model3int)
+```
+
+
+```{r}
+
+```
+
+
+##### $\bf \text{Boxplots:}$
+
+```{r}
+bpBG1<-ggplot(gee.data1, aes(x=stimulus_type, y= mean_basal.ganglia, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean Basal Ganglia")+
+   scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+#### Distribution of cdiox: boxplot
+bpMB1<-ggplot(gee.data1, aes(x=stimulus_type, y= mean_midbrain, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean Midbrain")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+bpVC1<-ggplot(gee.data1, aes(x=stimulus_type, y= mean_vis.ctx, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs (y = "mean Visual Cortex")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+bpOC1<-ggplot(gee.data1, aes(x=stimulus_type, y= mean_other.ctx, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean other Cortex")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+grid.arrange(bpBG1,bpMB1,bpVC1,bpOC1)
+
+bpBG2<-ggplot(gee.data2, aes(x=stimulus_type, y= mean_basal.ganglia, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean Basal Ganglia")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+#### Distribution of cdiox: boxplot
+bpMB2<-ggplot(gee.data2, aes(x=stimulus_type, y= mean_midbrain, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean Midbrain")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+bpVC2<-ggplot(gee.data2, aes(x=stimulus_type, y= mean_vis.ctx, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean Visual Cortex")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+bpOC2<-ggplot(gee.data2, aes(x=stimulus_type, y= mean_other.ctx, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean other Cortex")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+grid.arrange(bpBG2,bpMB2,bpVC2,bpOC2)
+
+bpBG3<-ggplot(gee.data3, aes(x=stimulus_type, y= mean_basal.ganglia, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean Basal Ganglia")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+#### Distribution of cdiox: boxplot
+bpMB3<-ggplot(gee.data3, aes(x=stimulus_type, y= mean_midbrain, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean Midbrain")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+bpVC3<-ggplot(gee.data3, aes(x=stimulus_type, y= mean_vis.ctx, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs( y = "mean Visual Cortex")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+
+bpOC3<-ggplot(gee.data3, aes(x=stimulus_type, y= mean_other.ctx, fill=stimulus_type)) + 
+    geom_boxplot()+
+    labs(y = "mean other Cortex")+
+  scale_fill_discrete(labels = c("0: neutral", "-1: negative", "1: positive"))+
+  theme_classic()
+grid.arrange(bpBG3,bpMB3,bpVC3,bpOC3)
+```
+
+
+```{r}
+coef(gee.model1)
+vcov(gee.model1)
+summary(gee.model1)
+coef(summary(gee.model1))
+```
+
+
+##### $\bf \text{Models with smaller values of QIC, CIC, QICu, or QICC are preferred}$
+
+##### $\bf \text{Comparison between model}$
+
+```{r}
+QIC(gee.model1)
+QIC(gee.model1int)
+
+QIC(gee.model2)
+QIC(gee.model2int)
+
+QIC(gee.model3)
+QIC(gee.model3int)
+
+```
+
+```{r}
+anova(gee.model1,gee.model1int)
+anova(gee.model2,gee.model2int)
+anova(gee.model3,gee.model3int)
+```
